@@ -57,6 +57,14 @@ class dahbug
     static protected $_lastFilename;
 
     /**
+     * Holds timers.
+     *
+     * @var array
+     * @access protected
+     */
+    static protected $_timers = array();
+
+    /**
      * Initializes debug. Reads two config files, config.json and local.json.
      *
      * @access public
@@ -1027,6 +1035,166 @@ class dahbug
 
         $logFile = self::$_logFile;
         fwrite($logFile, $string);
+    }
+
+    /**
+     * Reset a timer.
+     *
+     * @param string $name
+     * @static
+     * @access public
+     * @return void
+     */
+    static public function resetTimer($name) {
+        // start = Time timer was started (false if timer is stopped)
+        // count = Number of times timer has been started
+        // total = Total running time
+        self::$_timers[$name] = array(
+            'start' => false,
+            'count' => 0,
+            'total' => 0,
+        );        
+    }
+
+    /**
+     * Start a timer.
+     *
+     * @param string $name
+     * @static
+     * @access public
+     * @return void
+     */
+    static public function startTimer($name) {
+        if (empty(self::$_timers[$name])) {
+            self::resetTimer($name);
+        }
+
+        // No need to start it if it's already running
+        if (self::$_timers[$name]['start'] === false) {
+            self::$_timers[$name]['start'] = microtime(true);
+            self::$_timers[$name]['count']++;
+        }
+    }
+
+    /**
+     * Stop a timer.
+     *
+     * @param string $name
+     * @static
+     * @access public
+     * @return void
+     */
+    static public function stopTimer($name) {
+        if (empty(self::$_timers[$name])) {
+            self::resetTimer($name);
+        }
+
+        if (self::$_timers[$name]['start'] !== false) {
+            self::$_timers[$name]['total'] += microtime(true) - self::$_timers[$name]['start'];
+            self::$_timers[$name]['start'] = false;
+        }
+    }
+
+    /**
+     * Get all timers.
+     *
+     * @static
+     * @access public
+     * @return array
+     */
+    static public function getTimers() {
+        return self::$_timers;
+    }
+
+    /**
+     * Get timer.
+     *
+     * Set $key to NULL to get the raw timer array
+     * Set $key to 'pretty' to get a pretty formatted string of timer status
+     * Set $key to 'start' to get time (microseconds) the timer was last started (returns FALSE if timer is stopped)
+     * Set $key to 'total' to get the total running time in microseconds
+     * Set $key to 'count' to get the number of times the timer has been started
+     *
+     * @param string $name
+     * @param mixed $key
+     * @static
+     * @access public
+     * @return mixed
+     */
+    static public function getTimer($name, $key = 'pretty') {
+        if (empty(self::$_timers[$name])) {
+            return false;
+        }
+
+        if ($key === null) {
+            return self::$_timers[$name];
+        }
+
+        switch ($key) {
+            case 'pretty':
+                // Get current totalt time
+                $total = self::$_timers[$name]['total'];
+
+                if (self::$_timers[$name]['start'] !== false) {
+                    $total += microtime(true) - self::$_timers[$name]['start'];
+                }
+
+                $total       = self::_formatTime($total);
+                $label       = self::_colorize($name, 'timer_name');
+                $timesString = self::$_timers[$name]['count'] === 1 ? 'time' : 'times';
+
+                $string = sprintf('Timer%s: %s (Started %s %s)',
+                    sprintf(self::getData('label_format'), $label),
+                    self::_colorize($total, 'timer_total'),
+                    self::_colorize(self::$_timers[$name]['count'], 'timer_count'),
+                    $timesString
+                );
+
+                return $string;
+
+            default:
+                if (array_key_exists(self::$_timers[$name], $key)) {
+                    return self::$_timers[$name][$key];
+                }
+        }
+
+        return false;
+    }
+
+    /**
+     * Pretty print timer to the log.
+     *
+     * @param string $name
+     * @static
+     * @access public
+     * @return void
+     */
+    static public function logTimer($name) {
+        self::_write(self::getTimer($name) . DAHBUG_EOL);
+    }
+
+    /**
+     * Pretty print all timers to the log.
+     *
+     * Set $stop to FALSE if you don't want this function to stop them for you
+     *
+     * @param bool $stop
+     * @static
+     * @access public
+     * @return void
+     */
+    static public function logTimers($stop = true) {
+        // We stop all timers before printing them to minimize the effect
+        // of the pretty printing would have on them.
+        if ($stop) {
+            foreach (self::$_timers as $name => $timer) {
+                self::stopTimer($name);
+            }
+        }
+
+        foreach (self::$_timers as $name => $timer) {
+            self::logTimer($name);
+        }
     }
 
     /**
